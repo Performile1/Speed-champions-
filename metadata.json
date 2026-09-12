@@ -1,0 +1,6 @@
+{
+  "name": "LEGO F1 Speed Champions Customizer",
+  "description": "3D colorscheme designer, decal editor, AI livery generator, collector box and instruction manual builder for LEGO Speed Champions Formula 1 models.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

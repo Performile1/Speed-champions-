@@ -100,9 +100,11 @@ interface BoxArtStudioProps {
   colors: CarPartColors;
   decals: CarDecals;
   snapshotUrl?: string;
+  sideSnapshotUrl?: string;
   customBoxTitle?: string;
   customBoxSubtitle?: string;
   onRefreshSnapshot?: () => void;
+  totalPieceCount?: number;
 }
 
 export const BoxArtStudio: React.FC<BoxArtStudioProps> = ({
@@ -110,8 +112,10 @@ export const BoxArtStudio: React.FC<BoxArtStudioProps> = ({
   colors,
   decals,
   snapshotUrl,
+  sideSnapshotUrl,
   customBoxTitle,
   customBoxSubtitle,
+  totalPieceCount,
 }) => {
   const [boxDisplayMode, setBoxDisplayMode] = useState<'unfolded-box' | '3d-box' | 'flat-cover'>('unfolded-box');
   const [selectedBgKey, setSelectedBgKey] = useState<string>('ASPHALT_SKID');
@@ -127,7 +131,7 @@ export const BoxArtStudio: React.FC<BoxArtStudioProps> = ({
 
   // Set Specs
   const setNumberDisplay = set.articleNumber.startsWith('#') ? set.articleNumber : `#${set.articleNumber}`;
-  const pieceCountDisplay = `${set.pieceCount} pcs/pzs`;
+  const pieceCountDisplay = `${totalPieceCount || set.pieceCount} pcs/pzs`;
   const ageDisplay = set.era === 'classic-6-wide' ? '8+' : '10+';
 
   // 3D Texture Canvases for the 6 faces of the 3D Box in Three.js
@@ -302,13 +306,26 @@ export const BoxArtStudio: React.FC<BoxArtStudioProps> = ({
       tCtx.fillText('SPEED CHAMPIONS', 105, 75);
 
       tCtx.strokeStyle = 'rgba(255,255,255,0.25)';
-      tCtx.strokeRect(580, 45, 180, 40);
+      tCtx.strokeRect(580, 35, 180, 50);
       tCtx.fillStyle = '#cbd5e1';
-      tCtx.font = 'bold 14px monospace';
+      tCtx.font = 'bold 13px monospace';
       tCtx.textAlign = 'center';
-      tCtx.fillText('1:1 PIRELLI DÄCK', 670, 70);
+      tCtx.fillText('1:1 ACTUAL SIZE', 670, 58);
+      tCtx.font = '10px monospace';
+      tCtx.fillStyle = '#94a3b8';
+      tCtx.fillText('20 cm / 8 in • SKALA', 670, 74);
 
-      setTopCanvas(tCanvas);
+      if (sideSnapshotUrl) {
+        const sideImg = new Image();
+        sideImg.crossOrigin = 'anonymous';
+        sideImg.onload = () => {
+          tCtx.drawImage(sideImg, 320, 25, 230, 150);
+          setTopCanvas(tCanvas);
+        };
+        sideImg.src = sideSnapshotUrl;
+      } else {
+        setTopCanvas(tCanvas);
+      }
     }
 
     // 4. Bottom Canvas (800x200)
@@ -800,18 +817,33 @@ export const BoxArtStudio: React.FC<BoxArtStudioProps> = ({
                 <p className="text-[10px] text-slate-400 mt-1 font-mono">SET {setNumberDisplay}</p>
               </div>
 
-              {/* Center Car Wireframe Silhouette (Matching image.png) */}
-              <div className="hidden sm:flex flex-col items-center opacity-60">
-                <svg className="w-24 h-12 stroke-white fill-none" viewBox="0 0 100 40">
-                  <path d="M 5 25 L 20 25 L 30 15 L 60 15 L 75 25 L 95 25 L 90 28 L 10 28 Z" strokeWidth="1.5" />
-                  <circle cx="22" cy="28" r="6" strokeWidth="1.5" />
-                  <circle cx="78" cy="28" r="6" strokeWidth="1.5" />
-                </svg>
-              </div>
+              {/* Center Car Wireframe Silhouette / 1:1 Side Elevation */}
+              {sideSnapshotUrl ? (
+                <div className="flex flex-col items-center">
+                  <div className="text-[9px] font-mono font-bold text-amber-400 tracking-wider flex items-center gap-1 mb-0.5">
+                    <span>|◄</span>
+                    <span className="border-b border-amber-400/60 px-3">1:1 ACTUAL SIZE • 20 cm</span>
+                    <span>►|</span>
+                  </div>
+                  <img
+                    src={sideSnapshotUrl}
+                    alt="1:1 Actual Size Side Profile"
+                    className="h-14 object-contain filter drop-shadow-md"
+                  />
+                </div>
+              ) : (
+                <div className="hidden sm:flex flex-col items-center opacity-60">
+                  <svg className="w-24 h-12 stroke-white fill-none" viewBox="0 0 100 40">
+                    <path d="M 5 25 L 20 25 L 30 15 L 60 15 L 75 25 L 95 25 L 90 28 L 10 28 Z" strokeWidth="1.5" />
+                    <circle cx="22" cy="28" r="6" strokeWidth="1.5" />
+                    <circle cx="78" cy="28" r="6" strokeWidth="1.5" />
+                  </svg>
+                </div>
+              )}
 
               <div className="text-right">
-                <span className="border border-white/30 px-2 py-1 text-[10px] font-mono rounded bg-black/40 backdrop-blur-xs">
-                  1:1 PIRELLI DÄCK SKALA
+                <span className="border border-white/30 px-2 py-1 text-[10px] font-mono rounded bg-black/40 backdrop-blur-xs text-amber-300 font-bold">
+                  1:1 SKALA • ACTUAL SIZE
                 </span>
                 <p className="text-xs font-bold mt-1 text-slate-300">{customSubtitle}</p>
               </div>

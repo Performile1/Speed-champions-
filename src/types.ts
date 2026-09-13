@@ -80,6 +80,18 @@ export interface CarDecals {
   customTextColor?: string;
   customBadgeColor?: string;
   customText?: string;
+  // KÖRNING 2: Driver & Minifigure Customization
+  driverName?: string;
+  driverNumber?: string;
+  driverFlag?: string;
+  driverHeadgear?: 'helmet' | 'hair';
+  driverSuitColor?: string;
+  driverAccessory?: 'none' | 'umbrella' | 'bottle' | 'steeringWheel' | 'trophy';
+  // KÖRNING 2: Interactive 3D Decal Transform Controls
+  interactiveDecalActive?: boolean;
+  decal3DPosition?: { x: number; y: number; z: number };
+  decal3DRotation?: { x: number; y: number; z: number };
+  decal3DScale?: { x: number; y: number; z: number };
 }
 
 export interface OfficialStickerItem {

@@ -22,6 +22,9 @@ import {
   ExternalLink,
   Zap,
   Grid,
+  Undo2,
+  Redo2,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function App() {
@@ -35,17 +38,22 @@ export default function App() {
 
   // Granular LEGO parts state (for hide/isolate, add/remove, BrickLink)
   const [granularParts, setGranularParts] = useState<GranularLegoPart[]>(() =>
-    getGranularLegoParts(currentSet.defaultColors)
+    getGranularLegoParts(currentSet.defaultColors, currentSet)
   );
   const [hiddenPartKeys, setHiddenPartKeys] = useState<Set<string>>(new Set());
   const [isolatedPartId, setIsolatedPartId] = useState<string | null>(null);
+
+  // Individual Brick Custom Colors & 3D Selected Instance ID
+  const [customBrickColors, setCustomBrickColors] = useState<Record<string, string>>({});
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
 
   // Custom AI Box title/subtitles
   const [customBoxTitle, setCustomBoxTitle] = useState<string | undefined>();
   const [customBoxSubtitle, setCustomBoxSubtitle] = useState<string | undefined>();
 
-  // Snapshot data URL captured from 3D viewer for the Box and Manual
+  // Snapshot data URL captured from 3D viewer for the Box and Manual (Hero Front 3/4 + Side Profile)
   const [snapshotUrl, setSnapshotUrl] = useState<string | undefined>();
+  const [sideSnapshotUrl, setSideSnapshotUrl] = useState<string | undefined>();
 
   // Modals state
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -61,7 +69,9 @@ export default function App() {
     setCurrentSet(newSet);
     setColors(newSet.defaultColors);
     setDecals(newSet.defaultDecals);
-    setGranularParts(getGranularLegoParts(newSet.defaultColors));
+    setGranularParts(getGranularLegoParts(newSet.defaultColors, newSet));
+    setCustomBrickColors({});
+    setSelectedInstanceId(null);
     setHiddenPartKeys(new Set());
     setIsolatedPartId(null);
     setCustomBoxTitle(undefined);
@@ -69,8 +79,103 @@ export default function App() {
     setActiveTab('customize');
   };
 
+  // History State for Undo / Redo / Reset
+  interface HistorySnapshot {
+    colors: CarPartColors;
+    customBrickColors: Record<string, string>;
+    granularParts: GranularLegoPart[];
+  }
+
+  const [undoStack, setUndoStack] = useState<HistorySnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<HistorySnapshot[]>([]);
+
+  const pushHistorySnapshot = () => {
+    setUndoStack((prev) => [
+      ...prev.slice(-30),
+      {
+        colors: { ...colors },
+        customBrickColors: { ...customBrickColors },
+        granularParts: [...granularParts],
+      },
+    ]);
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    const newUndo = undoStack.slice(0, -1);
+
+    setRedoStack((prev) => [
+      ...prev,
+      {
+        colors: { ...colors },
+        customBrickColors: { ...customBrickColors },
+        granularParts: [...granularParts],
+      },
+    ]);
+    setUndoStack(newUndo);
+
+    setColors(previous.colors);
+    setCustomBrickColors(previous.customBrickColors);
+    setGranularParts(previous.granularParts);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    const newRedo = redoStack.slice(0, -1);
+
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        colors: { ...colors },
+        customBrickColors: { ...customBrickColors },
+        granularParts: [...granularParts],
+      },
+    ]);
+    setRedoStack(newRedo);
+
+    setColors(next.colors);
+    setCustomBrickColors(next.customBrickColors);
+    setGranularParts(next.granularParts);
+  };
+
+  const handleResetAll = () => {
+    pushHistorySnapshot();
+    setColors(currentSet.defaultColors);
+    setDecals(currentSet.defaultDecals);
+    setGranularParts(getGranularLegoParts(currentSet.defaultColors, currentSet));
+    setCustomBrickColors({});
+    setSelectedInstanceId(null);
+    setHiddenPartKeys(new Set());
+    setIsolatedPartId(null);
+  };
+
+  // Keyboard Shortcuts: Ctrl+Z (Undo), Ctrl+Y or Ctrl+Shift+Z (Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack, redoStack, colors, customBrickColors, granularParts]);
+
   // Color modification
   const handleUpdateColor = (part: CarPartKey, hex: string) => {
+    pushHistorySnapshot();
     setColors((prev) => ({ ...prev, [part]: hex }));
     setGranularParts((prev) =>
       prev.map((p) =>
@@ -86,12 +191,13 @@ export default function App() {
     );
   };
 
-  // Update a single granular part's color
+  // Update a single granular part's color (individual per-brick color override!)
   const handleUpdateGranularPartColor = (partId: string, hex: string) => {
+    pushHistorySnapshot();
+    setCustomBrickColors((prev) => ({ ...prev, [partId]: hex }));
     setGranularParts((prev) =>
       prev.map((p) => {
         if (p.id === partId) {
-          handleUpdateColor(p.partKey, hex);
           return {
             ...p,
             colorHex: hex,
@@ -156,13 +262,16 @@ export default function App() {
 
   // Reset Parts
   const handleResetParts = () => {
-    setGranularParts(getGranularLegoParts(currentSet.defaultColors));
+    setGranularParts(getGranularLegoParts(currentSet.defaultColors, currentSet));
+    setCustomBrickColors({});
+    setSelectedInstanceId(null);
     setHiddenPartKeys(new Set());
     setIsolatedPartId(null);
   };
 
   // Apply chosen color to all aerodynamic bodywork panels
   const handleApplyAllAero = (hex: string) => {
+    pushHistorySnapshot();
     setColors((prev) => ({
       ...prev,
       nose: hex,
@@ -193,6 +302,7 @@ export default function App() {
 
   // Apply complete Livery Color Palette across car panels and decals
   const handleApplyLiveryColors = (primary: string, secondary: string, accent: string) => {
+    pushHistorySnapshot();
     setColors((prev) => ({
       ...prev,
       nose: primary,
@@ -240,6 +350,33 @@ export default function App() {
     setActiveTab('customize');
   };
 
+  const handleAddCustomPart = (newPart: GranularLegoPart) => {
+    setGranularParts((prev) => [...prev, newPart]);
+  };
+
+  const handleSwapPartElement = (
+    instanceId: string,
+    newDesignId: string,
+    newElementId: string,
+    newPieceName: string,
+    category: string
+  ) => {
+    pushHistorySnapshot();
+    setGranularParts((prev) =>
+      prev.map((p) =>
+        p.id === instanceId
+          ? {
+              ...p,
+              designId: newDesignId,
+              elementId: newElementId,
+              name: newPieceName,
+              category,
+            }
+          : p
+      )
+    );
+  };
+
   // Total active piece count calculated from granular parts
   const dynamicPieceCount = granularParts.reduce((acc, p) => acc + p.quantity, 0);
 
@@ -280,6 +417,33 @@ export default function App() {
 
           {/* Action Tools & Modals */}
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* History Engine: Undo / Redo / Reset */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+                title="Ångra ändring (Ctrl+Z)"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                className="p-1.5 rounded-lg text-slate-600 hover:text-slate-950 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+                title="Gör om ändring (Ctrl+Y)"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleResetAll}
+                className="p-1.5 rounded-lg text-slate-600 hover:text-red-600 hover:bg-white transition-all cursor-pointer"
+                title="Återställ alla klossar & färger"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {/* Connect to LEGO Article Button */}
             <button
               onClick={() => setIsConnectModalOpen(true)}
@@ -390,11 +554,26 @@ export default function App() {
                   colors={colors}
                   decals={decals}
                   era={currentSet.era}
+                  currentSet={currentSet}
                   selectedPart={selectedPart}
                   onSelectPart={setSelectedPart}
-                  onCaptureSnapshot={setSnapshotUrl}
+                  onCaptureSnapshot={(front, side) => {
+                    setSnapshotUrl(front);
+                    if (side) setSideSnapshotUrl(side);
+                  }}
                   hiddenParts={hiddenPartKeys}
                   isolatedPartId={isolatedPartId}
+                  selectedInstanceId={selectedInstanceId}
+                  onSelectInstanceId={setSelectedInstanceId}
+                  customBrickColors={customBrickColors}
+                  onUpdateIndividualBrickColor={handleUpdateGranularPartColor}
+                  onAddCustomPart={handleAddCustomPart}
+                  onSwapPartElement={handleSwapPartElement}
+                  canUndo={undoStack.length > 0}
+                  canRedo={redoStack.length > 0}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onResetHistory={handleResetAll}
                 />
               </div>
 
@@ -499,6 +678,8 @@ export default function App() {
                   parts={granularParts}
                   hiddenPartIds={hiddenPartKeys}
                   isolatedPartId={isolatedPartId}
+                  selectedInstanceId={selectedInstanceId}
+                  onSelectInstanceId={setSelectedInstanceId}
                   onToggleHidePart={handleToggleHidePart}
                   onIsolatePart={handleIsolatePart}
                   onShowAllParts={handleShowAllParts}
@@ -540,6 +721,8 @@ export default function App() {
               parts={granularParts}
               hiddenPartIds={hiddenPartKeys}
               isolatedPartId={isolatedPartId}
+              selectedInstanceId={selectedInstanceId}
+              onSelectInstanceId={setSelectedInstanceId}
               onToggleHidePart={handleToggleHidePart}
               onIsolatePart={handleIsolatePart}
               onShowAllParts={handleShowAllParts}
@@ -574,8 +757,10 @@ export default function App() {
             colors={colors}
             decals={decals}
             snapshotUrl={snapshotUrl}
+            sideSnapshotUrl={sideSnapshotUrl}
             customBoxTitle={customBoxTitle}
             customBoxSubtitle={customBoxSubtitle}
+            totalPieceCount={dynamicPieceCount}
           />
         )}
 

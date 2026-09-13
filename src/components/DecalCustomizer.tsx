@@ -27,6 +27,10 @@ import {
   Palette,
   Hash,
   Copy,
+  UserCheck,
+  Flag,
+  Trophy,
+  Shield,
 } from 'lucide-react';
 
 interface DecalCustomizerProps {
@@ -38,6 +42,24 @@ interface DecalCustomizerProps {
   selectedPart: CarPartKey;
   onSelectPart: (part: CarPartKey) => void;
 }
+
+const DRIVER_FLAGS = [
+  { code: 'SWE', label: 'Sverige', emoji: '🇸🇪' },
+  { code: 'GBR', label: 'Storbritannien', emoji: '🇬🇧' },
+  { code: 'NED', label: 'Nederländerna', emoji: '🇳🇱' },
+  { code: 'MON', label: 'Monaco', emoji: '🇲🇨' },
+  { code: 'GER', label: 'Tyskland', emoji: '🇩🇪' },
+  { code: 'ESP', label: 'Spanien', emoji: '🇪🇸' },
+  { code: 'FRA', label: 'Frankrike', emoji: '🇫🇷' },
+  { code: 'ITA', label: 'Italien', emoji: '🇮🇹' },
+  { code: 'USA', label: 'USA', emoji: '🇺🇸' },
+  { code: 'FIN', label: 'Finland', emoji: '🇫🇮' },
+  { code: 'JPN', label: 'Japan', emoji: '🇯🇵' },
+  { code: 'BRA', label: 'Brasilien', emoji: '🇧🇷' },
+  { code: 'AUS', label: 'Australien', emoji: '🇦🇺' },
+  { code: 'CAN', label: 'Kanada', emoji: '🇨🇦' },
+  { code: 'MEX', label: 'Mexiko', emoji: '🇲🇽' },
+];
 
 const PLACEMENT_OPTIONS: {
   key: DecalPlacementKey;
@@ -67,8 +89,9 @@ export const DecalCustomizer: React.FC<DecalCustomizerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sub-tabs matching user UI & requests:
-  // 'applicator' (Decal Applicator & Scaling), 'livery' (Livery & Sponsors), 'blueprints' (Lego Dekal-ritningar), 'inspector' (Element ID)
-  const [activeTab, setActiveTab] = useState<'applicator' | 'livery' | 'blueprints' | 'inspector'>('applicator');
+  // 'applicator' (Decal Applicator & Scaling), 'livery' (Livery & Sponsors), 'driver' (Minifigur & Förare), 'blueprints' (Lego Dekal-ritningar), 'inspector' (Element ID)
+  const [activeTab, setActiveTab] = useState<'applicator' | 'livery' | 'driver' | 'blueprints' | 'inspector'>('applicator');
+  const [selectedSponsorCategory, setSelectedSponsorCategory] = useState<string>('Alla');
 
   const activePlacement = decals.uploadedLogoPlacement || 'sidepod';
   const currentPlacementInfo =
@@ -156,6 +179,18 @@ export const DecalCustomizer: React.FC<DecalCustomizerProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('driver')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'driver'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+            Minifigur & Förare
+          </button>
+
+          <button
             onClick={() => setActiveTab('blueprints')}
             className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'blueprints'
@@ -202,27 +237,78 @@ export const DecalCustomizer: React.FC<DecalCustomizerProps> = ({
             </p>
           </div>
 
-          {/* Quick Preset Sponsor Logos (As seen in image.png) */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-            <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
-              Välj Officiell Sponsorlogo (1-Klick Applicering):
-            </label>
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-              {PRESET_SPONSOR_LOGOS.map((preset) => (
+          {/* Quick Preset Sponsor Logos (Organized by Category) */}
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                Välj Officiell Sponsorlogo (1-Klick Applicering):
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {PRESET_SPONSOR_LOGOS.length} logotyper
+              </span>
+            </div>
+
+            {/* Category Filter Tabs matching official spec */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {[
+                { id: 'Alla', label: 'Alla Dekaler' },
+                { id: 'Official F1', label: 'Official F1' },
+                { id: 'Logistics', label: 'Logistics' },
+                { id: 'Tech & AI', label: 'Tech & AI' },
+                { id: 'Cult & Rebels', label: 'Cult & Rebels' },
+                { id: 'Nordic & Memes', label: 'Nordic & Memes' },
+              ].map((cat) => (
                 <button
-                  key={preset.id}
-                  onClick={() => handleSelectPreset(preset)}
-                  className="h-11 p-1.5 rounded-xl bg-white border border-slate-200 hover:border-amber-500 hover:bg-amber-50/50 shadow-2xs flex flex-col items-center justify-center transition-all cursor-pointer group"
-                  title={`${preset.name} (${preset.category})`}
+                  key={cat.id}
+                  onClick={() => setSelectedSponsorCategory(cat.id)}
+                  className={`px-3 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                    selectedSponsorCategory === cat.id
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
                 >
-                  <div
-                    className="w-full h-6 flex items-center justify-center filter group-hover:scale-105 transition-transform"
-                    dangerouslySetInnerHTML={{ __html: preset.svgIcon }}
-                  />
-                  <span className="text-[9px] font-black text-slate-600 truncate w-full text-center mt-0.5">
-                    {preset.name}
-                  </span>
+                  {cat.label}
                 </button>
+              ))}
+            </div>
+
+            {/* 2D Sticker Sheet Grid with Applicera på bil button under each */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto pr-1">
+              {PRESET_SPONSOR_LOGOS.filter((p) => {
+                if (selectedSponsorCategory === 'Alla') return true;
+                if (selectedSponsorCategory === 'Official F1') return p.category === 'F1 Official';
+                if (selectedSponsorCategory === 'Logistics') return p.category === 'Logistics & Racing';
+                if (selectedSponsorCategory === 'Tech & AI') return p.category === 'Tech & AI' || p.category === 'Crypto & Finance';
+                if (selectedSponsorCategory === 'Cult & Rebels') return p.category === 'Teams & Brands' || p.category === 'Custom Concepts';
+                if (selectedSponsorCategory === 'Nordic & Memes') return p.category === 'Memes & Racing Humor' || p.id.includes('koenigsegg') || p.id.includes('cyan') || p.id.includes('ikea') || p.id.includes('moose');
+                return true;
+              }).map((preset) => (
+                <div
+                  key={preset.id}
+                  className="p-2 rounded-xl bg-white border border-slate-200 hover:border-amber-400 hover:shadow-xs flex flex-col justify-between transition-all group"
+                >
+                  <div className="h-10 w-full flex items-center justify-center p-1 bg-slate-50/70 rounded-lg mb-1.5 overflow-hidden">
+                    <div
+                      className="w-full h-full flex items-center justify-center filter group-hover:scale-105 transition-transform"
+                      dangerouslySetInnerHTML={{ __html: preset.svgIcon }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-1 mb-1.5 px-0.5">
+                    <span className="text-[10px] font-black text-slate-700 truncate">
+                      {preset.name}
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                      {preset.defaultWidthStuds}s
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleSelectPreset(preset)}
+                    className="w-full py-1 px-2 rounded-lg bg-slate-100 hover:bg-amber-400 hover:text-slate-950 text-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>Applicera på bil</span>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -522,6 +608,240 @@ export const DecalCustomizer: React.FC<DecalCustomizerProps> = ({
                   className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   placeholder="C. Leclerc"
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: MINIFIGUR & FÖRARE CUSTOMIZER */}
+      {/* ========================================================================= */}
+      {activeTab === 'driver' && (
+        <div className="space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+                Minifigur & Förare Customizer
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Anpassa din officiella LEGO Speed Champions F1-förare, nationalitet, tillbehör och 3D-dekalprojicering.
+              </p>
+            </div>
+            <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md font-bold">
+              Minifigur v2.5
+            </span>
+          </div>
+
+          {/* Driver Identity Card */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Flag className="w-3.5 h-3.5 text-indigo-500" />
+              Föraridentitet & Nationalitet
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Förarnamn:
+                </label>
+                <input
+                  type="text"
+                  value={decals.customDriverName || ''}
+                  onChange={(e) => onUpdateDecals({ customDriverName: e.target.value })}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                  placeholder="C. Leclerc"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Startnummer (#):
+                </label>
+                <input
+                  type="text"
+                  value={decals.racingNumber}
+                  onChange={(e) => onUpdateDecals({ racingNumber: e.target.value })}
+                  className="w-full px-3 py-2 text-xs font-black font-mono rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                  placeholder="16"
+                />
+              </div>
+            </div>
+
+            {/* National Flags Selector */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                Välj Nationalitetsflagga:
+              </label>
+              <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
+                {DRIVER_FLAGS.map((flag) => {
+                  const isSelected = (decals.driverFlag || '🇲🇨') === flag.emoji;
+                  return (
+                    <button
+                      key={flag.code}
+                      onClick={() => onUpdateDecals({ driverFlag: flag.emoji })}
+                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                        isSelected
+                          ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-2xs scale-105'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                      title={`${flag.label} (${flag.code})`}
+                    >
+                      <span className="text-base leading-none">{flag.emoji}</span>
+                      <span className="text-[9px] font-mono font-bold mt-0.5">{flag.code}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 3D Decal Projection Controls */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-emerald-600" />
+              3D Dekal-Projicering på Bilen
+            </h4>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={decals.projectDriverCockpit !== false}
+                  onChange={(e) => onUpdateDecals({ projectDriverCockpit: e.target.checked })}
+                  className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-800 block">Projicera förarens namn & flagga på cockpitens sidovägg</span>
+                  <span className="text-[11px] text-slate-500">Visar t.ex. "{decals.driverFlag || '🇲🇨'} {decals.customDriverName || 'C. Leclerc'}" på 1x2 tile #3069b</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={decals.projectDriverNose !== false}
+                  onChange={(e) => onUpdateDecals({ projectDriverNose: e.target.checked })}
+                  className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-800 block">Projicera startnummer på noskonens täckplåt (#15068)</span>
+                  <span className="text-[11px] text-slate-500">Visar #{decals.racingNumber} i rätt vinkel över framaxeln</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Paddock Minifigure Gear & Accessories */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              Paddock Utrustning & Tillbehör
+            </h4>
+
+            {/* Headgear Switcher */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                Huvudbonad:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => onUpdateDecals({ driverHeadgear: 'helmet' })}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                    decals.driverHeadgear !== 'hair'
+                      ? 'bg-amber-400 border-amber-500 text-slate-950 font-bold shadow-2xs'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="text-xl">⛑️</span>
+                  <div>
+                    <div className="text-xs font-black">F1 Racing-Hjälm</div>
+                    <div className="text-[10px] text-slate-600 font-mono">LDraw #112033 (Aero Winglet)</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => onUpdateDecals({ driverHeadgear: 'hair' })}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                    decals.driverHeadgear === 'hair'
+                      ? 'bg-amber-400 border-amber-500 text-slate-950 font-bold shadow-2xs'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="text-xl">💇</span>
+                  <div>
+                    <div className="text-xs font-black">Paddock-Frisyr</div>
+                    <div className="text-[10px] text-slate-600 font-mono">LDraw #62810 (Swept-Back Hair)</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Suit & Overall Customizer */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                Föraroverall & Teamfärg:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={decals.driverSuitColor || currentColors.cockpit || '#DC2626'}
+                  onChange={(e) => onUpdateDecals({ driverSuitColor: e.target.value })}
+                  className="w-9 h-9 rounded-xl border border-slate-300 cursor-pointer p-0.5"
+                  title="Välj anpassad teamfärg för overall"
+                />
+                <button
+                  onClick={() => onUpdateDecals({ driverSuitColor: currentColors.chassis })}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span
+                    className="w-3 h-3 rounded-full border border-slate-300"
+                    style={{ backgroundColor: currentColors.chassis }}
+                  />
+                  <span>Matcha Bilchassi ({currentColors.chassis})</span>
+                </button>
+                <button
+                  onClick={() => onUpdateDecals({ driverSuitColor: '#ffffff' })}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="w-3 h-3 rounded-full border border-slate-300 bg-white" />
+                  <span>Klassisk Vit</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Paddock Accessories */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                Paddock & Grid-Tillbehör:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  { id: 'none', label: 'Ingen', sub: 'Standard körläge', icon: '🏁' },
+                  { id: 'steeringWheel', label: 'Ratt Controller', sub: 'Design #106739', icon: '🎮' },
+                  { id: 'umbrella', label: 'Grid-Paraply', sub: 'Design #27150', icon: '☂️' },
+                  { id: 'bottle', label: 'Dryckesflaska', sub: 'Design #28664', icon: '🧴' },
+                  { id: 'trophy', label: '1:a Pris Pokal', sub: 'Design #1126', icon: '🏆' },
+                ].map((acc) => {
+                  const isSelected = (decals.driverAccessory || 'none') === acc.id;
+                  return (
+                    <button
+                      key={acc.id}
+                      onClick={() => onUpdateDecals({ driverAccessory: acc.id as any })}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                        isSelected
+                          ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="text-xl mb-0.5">{acc.icon}</span>
+                      <span className="text-xs font-bold leading-tight">{acc.label}</span>
+                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{acc.sub}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

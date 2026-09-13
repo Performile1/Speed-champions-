@@ -61,7 +61,7 @@ export const Box3DViewer: React.FC<Box3DViewerProps> = ({
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -198,6 +198,8 @@ export const Box3DViewer: React.FC<Box3DViewerProps> = ({
     const updateFace = (index: number, sourceCanvas: HTMLCanvasElement | null) => {
       if (!sourceCanvas) return;
       const texture = new THREE.CanvasTexture(sourceCanvas);
+      texture.flipY = false;
+      texture.premultiplyAlpha = false;
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.needsUpdate = true;
 

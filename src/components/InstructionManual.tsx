@@ -3,6 +3,7 @@ import { LegoF1Set, CarPartColors, CarDecals, ManualStep, GranularLegoPart } fro
 import { findLegoColorName } from '../data/legoColors';
 import { getGranularLegoParts } from '../data/legoPartsDatabase';
 import { generateInstructionManualPdf } from '../utils/pdfGenerator';
+import { generateLDrawMpd } from '../data/ldrawModels';
 import {
   BookOpen,
   ChevronLeft,
@@ -19,6 +20,7 @@ import {
   FileText,
   Printer,
   Sparkles,
+  FileDown,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -481,6 +483,19 @@ export const InstructionManual: React.FC<InstructionManualProps> = ({
     }
   };
 
+  const handleDownloadLDraw = () => {
+    const mpd = generateLDrawMpd(set, colors, decals);
+    const blob = new Blob([mpd.mpdContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${set.articleNumber}_Speed_Champions_official_ldraw.mpd`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const currentStep = currentPage > 0 && currentPage <= manualSteps.length ? manualSteps[currentPage - 1] : null;
 
   return (
@@ -506,8 +521,17 @@ export const InstructionManual: React.FC<InstructionManualProps> = ({
           </div>
         </div>
 
-        {/* Download Flippable PDF Button */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleDownloadLDraw}
+            className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold flex items-center gap-1.5 border border-indigo-200 transition-colors shadow-2xs cursor-pointer"
+            title="Ladda ner officiell LDraw MPD med 0 STEP metadata för Studio 2.0"
+          >
+            <FileDown className="w-4 h-4 text-indigo-600" />
+            <span>Exportera .LDR / .MPD</span>
+          </button>
+
           <button
             onClick={handleDownloadPdf}
             disabled={isDownloadingPdf}
@@ -519,7 +543,7 @@ export const InstructionManual: React.FC<InstructionManualProps> = ({
 
           <button
             onClick={() => window.print()}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-2xs"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-2xs cursor-pointer"
             title="Skriv ut direkt via webbläsaren"
           >
             <Printer className="w-4 h-4 text-slate-600" />

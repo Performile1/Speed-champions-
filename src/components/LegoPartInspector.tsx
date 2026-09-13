@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { LEGO_COLORS, findLegoColorName } from '../data/legoColors';
 import { LegoColor } from '../types';
-import { ExternalLink, Check, Copy, Hash, Layers } from 'lucide-react';
+import { ExternalLink, Check, Copy, Hash, Layers, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { validateCatalogGridIntegrity, buildLDrawSetInstances } from '../data/ldrawModels';
+import { LEGO_F1_SETS } from '../data/legoSets';
 
 interface F1PartSpec {
   designId: string;
@@ -183,8 +185,76 @@ export const LegoPartInspector: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const [integrityReport] = useState(() => {
+    const defaultColors = {
+      frontWing: '#dc2626',
+      frontWingEndplates: '#dc2626',
+      nose: '#dc2626',
+      sidepods: '#dc2626',
+      engineCover: '#dc2626',
+      rearWing: '#dc2626',
+      rearWingEndplates: '#dc2626',
+      halo: '#1e293b',
+      rims: '#1e293b',
+      chassis: '#dc2626',
+      floor: '#0f172a',
+      cockpit: '#dc2626',
+      suspension: '#475569',
+      mirrors: '#dc2626',
+      sharkFin: '#dc2626',
+      driverSuit: '#ffffff',
+      driverHelmet: '#ffffff',
+      tireCompound: 'red' as const,
+    };
+    const { instances } = buildLDrawSetInstances(LEGO_F1_SETS[0], defaultColors);
+    return validateCatalogGridIntegrity(instances);
+  });
+
   return (
     <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      {/* Live Catalog Grid Integrity Validation Status */}
+      <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-800 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-black uppercase tracking-wider text-slate-100">
+              Catalog Grid Integrity Pass
+            </span>
+          </div>
+          <span
+            className={`px-2 py-0.5 text-[10px] font-black font-mono rounded-md ${
+              integrityReport.isValid
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+            }`}
+          >
+            {integrityReport.isValid ? '100% INVARIANTER GODKÄNDA' : 'VARNING: AVVIKELSER'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>4-Hjulsgaranti: #80249 + #112498 vid X=±60 LDU</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Slät Hjälmkupol: #112033/#2446 utan topp-stud</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Framvinge: Z &le; -165 LDU framför framhjulen</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Bakvinge & DRS: Gavlar vid X=±60 LDU, fri rymd</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-300 sm:col-span-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Sidopoddar: Övre downwash flush Y=-14 LDU, ytterkant X=±48 LDU</span>
+          </div>
+        </div>
+      </div>
       <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
         <div>
           <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">

@@ -1,6 +1,19 @@
 import { LDrawPartInstance, getLDrawColorCode, LDRAW_COLOR_CODES } from '../data/ldrawModels';
 import { CarPartColors, CarPartKey } from '../types';
 
+export interface ModelIntegrityReport {
+  isCoherent: boolean;
+  floatingAssemblies: string[];
+  asymmetryWarnings: string[];
+  gaps: { from: string; to: string; gapDistanceLDU: number }[];
+}
+
+export interface CollisionReport {
+  duplicatePositions: { id1: string; id2: string; pos: [number, number, number] }[];
+  categoryMismatches: { id: string; designId: string; assignedPart: string; z: number; expectedPart: string }[];
+  assemblyIntersections: { assemblyA: string; assemblyB: string; overlapZ: number }[];
+}
+
 export interface LDrawParseDiagnostics {
   totalLinesParsed: number;
   validPartsCount: number;
@@ -8,6 +21,8 @@ export interface LDrawParseDiagnostics {
   rearWingTilesFixedCount: number;
   fallbackWheelsMounted: boolean;
   warnings: string[];
+  integrityReport?: ModelIntegrityReport;
+  collisionReport?: CollisionReport;
 }
 
 export interface LDrawParseResult {
@@ -37,7 +52,9 @@ export const VEHICLE_BOUNDS = {
 };
 
 /**
- * Categorizes a part into CarPartKey and subAssembly based on design ID and spatial position
+ * Categorizes a part into CarPartKey and subAssembly based on design ID and spatial position.
+ * Uses exact Z boundaries and coordinate-precedence so versatile parts (like #15068) never
+ * get misclassified into opposite ends of the vehicle.
  */
 export function categorizePart(
   designId: string,
@@ -48,7 +65,7 @@ export function categorizePart(
 ): { partKey: CarPartKey; subAssembly: string; stepNumber: number; pieceName: string } {
   const cleanId = designId.replace('.dat', '').toLowerCase();
 
-  // Wheels, Tires, Aero Dishes
+  // 1. Hjul, Däck & Fälgar
   if (cleanId === '80249' || cleanId === '55981') {
     return {
       partKey: 'tireCompound',
@@ -57,20 +74,12 @@ export function categorizePart(
       pieceName: 'Speed Champions Pirelli Slick Racing Tire',
     };
   }
-  if (cleanId === '112498' || cleanId === '6539343') {
+  if (cleanId === '112498' || cleanId === '6539343' || cleanId === '107728' || cleanId === '112423' || cleanId === '6014') {
     return {
       partKey: 'rims',
       subAssembly: 'Wheels & Pirelli Tires',
       stepNumber: 11,
-      pieceName: 'Dish 16mm Aero Wheel Cover Hubcap',
-    };
-  }
-  if (cleanId === '107728' || cleanId === '112423' || cleanId === '6014') {
-    return {
-      partKey: 'rims',
-      subAssembly: 'Wheels & Pirelli Tires',
-      stepNumber: 11,
-      pieceName: '18-Inch Speed Champions Aero Rim',
+      pieceName: '18-Inch Speed Champions Aero Rim & Hubcap',
     };
   }
   if (cleanId === '3388' || cleanId === '3389') {
@@ -82,26 +91,18 @@ export function categorizePart(
     };
   }
 
-  // Driver Helmet & Minifig
-  if (cleanId === '112033' || cleanId === '2446' || cleanId === '18674') {
+  // 2. Förarutrustning & Hjälm
+  if (cleanId === '112033' || cleanId === '2446' || cleanId === '18674' || cleanId === '62810') {
     return {
       partKey: 'driverHelmet',
       subAssembly: 'Cockpit Cell',
       stepNumber: 3,
-      pieceName: 'Minifigure Modern F1 Racing Helmet with Aero Winglet',
-    };
-  }
-  if (cleanId === '62810') {
-    return {
-      partKey: 'driverHelmet',
-      subAssembly: 'Cockpit Cell',
-      stepNumber: 3,
-      pieceName: 'Minifigure Swept-Back Paddock Hair',
+      pieceName: 'Minifigure Modern F1 Racing Helmet',
     };
   }
 
-  // Halo Structure
-  if (cleanId === '100745' || cleanId === '6535158' || cleanId === '65633') {
+  // 3. Halo & Backspeglar (Side Mirrors)
+  if (cleanId === '100745' || cleanId === '65633' || cleanId === '6535158') {
     return {
       partKey: 'halo',
       subAssembly: 'Halo Structure',
@@ -109,20 +110,39 @@ export function categorizePart(
       pieceName: 'Halo Roll-Bar Titanium Protection Arch',
     };
   }
-
-  // Rearview Mirrors
-  if (cleanId === '80179' || cleanId === '6515221') {
+  if (cleanId === '80179' || cleanId === '6515221' || cleanId === '4592c02' || cleanId === '4592') {
     return {
-      partKey: 'nose',
-      subAssembly: 'Halo Structure',
+      partKey: 'cockpit',
+      subAssembly: 'Side Mirrors',
       stepNumber: 6,
-      pieceName: 'F1 Rearview Aero Mirror Pod (Spoon No. 1)',
+      pieceName: 'F1 Rearview Aero Mirror Pod (#80179)',
     };
   }
 
-  // Front Wing Elements (Z <= -180 LDU)
-  if (z <= -185) {
-    if (Math.abs(x) >= 70 || cleanId === '2420') {
+  // 3b. Technic-delar (Pinnar, axlar och vinkelbalkar för chassi/upphängning)
+  // Isoleras så de inte misstas för karosspaneler/motorkåpa
+  if (
+    cleanId === '2780' ||
+    cleanId === '3673' ||
+    cleanId === '32054' ||
+    cleanId === '6558' ||
+    cleanId === '3705' ||
+    cleanId === '3706' ||
+    cleanId === '32062' ||
+    cleanId === '43093' ||
+    cleanId === '6536'
+  ) {
+    return {
+      partKey: 'floor',
+      subAssembly: 'Chassis Structure & Technic Hardware',
+      stepNumber: 2,
+      pieceName: cleanId === '2780' ? 'Technic Pin with Friction' : cleanId === '3673' ? 'Technic Pin Frictionless' : 'Technic Chassis Hardware Element',
+    };
+  }
+
+  // 4. Framvinge & Endplates (Slutar strikt vid Z = -155)
+  if (z <= -155 || cleanId === '112499') {
+    if (Math.abs(x) >= 60 || cleanId === '2420') {
       return {
         partKey: 'frontWingEndplates',
         subAssembly: 'Front Wing',
@@ -134,18 +154,28 @@ export function categorizePart(
       partKey: 'frontWing',
       subAssembly: 'Front Wing',
       stepNumber: 5,
-      pieceName: cleanId === '112499' ? 'Plate 1 x 4 x 2/3 Outside Bow Wing Splitter' : 'Front Wing Aerofoil Element',
+      pieceName: 'Front Wing Aerofoil & Splitter Element',
     };
   }
 
-  // Rear Wing Elements (Z >= 170 LDU and Y <= -28 LDU)
-  if (z >= 170 && y <= -28) {
-    if (Math.abs(x) >= 55 || cleanId === '87079' || cleanId === '3020') {
+  // 5. Noskon (Från Z = -155 till Z = -30)
+  if (z > -155 && z <= -30 && y <= -8) {
+    return {
+      partKey: 'nose',
+      subAssembly: 'Nose Cone',
+      stepNumber: 4,
+      pieceName: cleanId === '15068' ? 'Slope Curved 2 x 2 Nose Cowl' : 'Nose Cone Aerodynamic Element',
+    };
+  }
+
+  // 6. Bakvinge & DRS Flap (Z >= 165)
+  if (z >= 165 || cleanId === '87079' || (cleanId === '3023' && z > 160)) {
+    if (Math.abs(x) >= 45) {
       return {
         partKey: 'rearWingEndplates',
         subAssembly: 'Rear Wing',
         stepNumber: 10,
-        pieceName: 'Tile 2 x 4 Rear Wing Vertical Endplate (Smooth)',
+        pieceName: 'Tile 2 x 4 Rear Wing Vertical Endplate',
       };
     }
     return {
@@ -156,8 +186,8 @@ export function categorizePart(
     };
   }
 
-  // Shark Fin (X close to 0, Y <= -45, Z between 50 and 160)
-  if (Math.abs(x) <= 6 && y <= -44 && z >= 50 && z <= 165) {
+  // 7. Shark Fin (Dorsal finne längs mitten bakom cockpit)
+  if (cleanId === '2431' && Math.abs(x) <= 6 && z >= 25 && z <= 165) {
     return {
       partKey: 'sharkFin',
       subAssembly: 'Shark Fin',
@@ -166,52 +196,144 @@ export function categorizePart(
     };
   }
 
-  // Engine Cover / Airbox (Y <= -30 and Z >= 25 and Z <= 150)
-  if (y <= -28 && z >= 25 && z <= 150) {
-    return {
-      partKey: 'engineCover',
-      subAssembly: 'Engine Cover',
-      stepNumber: 8,
-      pieceName: 'Slope Curved Engine Cover / Airbox',
-    };
-  }
-
-  // Sidepods (Math.abs(X) >= 30, Z between -75 and 80)
-  if (Math.abs(x) >= 30 && z >= -75 && z <= 80) {
+  // 8. Sidopoddar (Utåt sidorna mellan hjulaxlarna)
+  if (Math.abs(x) >= 20 && z >= -30 && z <= 130 && y <= -6) {
     return {
       partKey: 'sidepods',
       subAssembly: 'Sidepods',
       stepNumber: 7,
-      pieceName: cleanId === '93606' ? 'Slope Curved 4 x 2 Undercut Downwash Sidepod' : 'Sidepod Aero Bodywork',
+      pieceName: 'Slope Curved Downwash Sidepod',
     };
   }
 
-  // Nose Cone (Z between -185 and -120, Y <= -12)
-  if (z >= -185 && z <= -120 && y <= -12) {
+  // 9. Motorkåpa / Airbox (Mittenpartiet bakom cockpit vid Z > 20)
+  if (z > 20 && z < 165 && y <= -12) {
     return {
-      partKey: 'nose',
-      subAssembly: 'Nose Cone',
-      stepNumber: 4,
-      pieceName: 'Slope Curved Stepped Nose Cowl',
+      partKey: 'engineCover',
+      subAssembly: 'Engine Cover',
+      stepNumber: 8,
+      pieceName: cleanId === '15068' ? 'Slope Curved 2 x 2 Engine Cover' : 'Engine Cover / Airbox Fairing',
     };
   }
 
-  // Floor / Undertray (Y >= -8 or underbody plates)
-  if (y >= -8 || cleanId === '30029') {
+  // 10. Golv & Undertray
+  if (cleanId === '30029' || y >= -6) {
     return {
       partKey: 'floor',
       subAssembly: 'Floor & Undertray',
       stepNumber: 1,
-      pieceName: cleanId === '30029' ? 'Vehicle Base Undertray Plate 4 x 12' : 'Floor Venturi Undertray Plate',
+      pieceName: 'Vehicle Base Undertray Plate',
     };
   }
 
-  // Default: Cockpit / Chassis Core
+  // 11. Cockpit & Förarcell (Standard för övriga klossar kring mitten)
   return {
     partKey: 'cockpit',
     subAssembly: 'Cockpit Cell',
     stepNumber: 2,
     pieceName: 'Chassis Core Monocoque Element',
+  };
+}
+
+/**
+ * Validates structural continuity along the Z axis, detects floating assemblies, and reports asymmetries
+ */
+export function checkModelIntegrity(instances: LDrawPartInstance[]): ModelIntegrityReport {
+  const subAssemblies = ['Front Wing', 'Nose Cone', 'Cockpit Cell', 'Sidepods', 'Engine Cover', 'Rear Wing'];
+  const bounds: Record<string, { minZ: number; maxZ: number }> = {};
+
+  subAssemblies.forEach((name) => {
+    const parts = instances.filter((p) => p.subAssembly === name);
+    if (parts.length > 0) {
+      bounds[name] = {
+        minZ: Math.min(...parts.map((p) => p.z)),
+        maxZ: Math.max(...parts.map((p) => p.z)),
+      };
+    }
+  });
+
+  const gaps: { from: string; to: string; gapDistanceLDU: number }[] = [];
+  const sequence = [
+    ['Front Wing', 'Nose Cone'],
+    ['Nose Cone', 'Cockpit Cell'],
+    ['Cockpit Cell', 'Engine Cover'],
+    ['Engine Cover', 'Rear Wing'],
+  ];
+
+  sequence.forEach(([a, b]) => {
+    if (bounds[a] && bounds[b]) {
+      // Glapp uppstår om det inte finns något överlapp mellan sektionernas Z-gränser
+      const distance = bounds[b].minZ - bounds[a].maxZ;
+      if (distance > 10) {
+        gaps.push({ from: a, to: b, gapDistanceLDU: distance });
+      }
+    }
+  });
+
+  // Kontrollera asymmetri för sidepods
+  const sidepods = instances.filter((p) => p.partKey === 'sidepods');
+  const leftSide = sidepods.filter((p) => p.x > 10).length;
+  const rightSide = sidepods.filter((p) => p.x < -10).length;
+  const asymmetryWarnings: string[] = [];
+
+  if (Math.abs(leftSide - rightSide) > 2) {
+    asymmetryWarnings.push(`Obalans i sidopoddarna: ${leftSide} st på vänster sida, ${rightSide} st på höger.`);
+  }
+
+  return {
+    isCoherent: gaps.length === 0 && asymmetryWarnings.length === 0,
+    floatingAssemblies: gaps.map((g) => `${g.to} svävar (glapp på ${g.gapDistanceLDU.toFixed(1)} LDU bakom ${g.from})`),
+    asymmetryWarnings,
+    gaps,
+  };
+}
+
+/**
+ * Detects negative gaps, exact overlapping duplicate coordinates, and spatial category mismatches
+ */
+export function detectCollisionsAndOverlaps(instances: LDrawPartInstance[]): CollisionReport {
+  const duplicates: CollisionReport['duplicatePositions'] = [];
+  const mismatches: CollisionReport['categoryMismatches'] = [];
+
+  // 1. Kontrollera om två delar delar samma koordinat (fysisk krock)
+  for (let i = 0; i < instances.length; i++) {
+    for (let j = i + 1; j < instances.length; j++) {
+      const a = instances[i];
+      const b = instances[j];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+
+      if (dist < 1.0 && a.designId !== 'stud' && b.designId !== 'stud') {
+        duplicates.push({ id1: a.id, id2: b.id, pos: [a.x, a.y, a.z] });
+      }
+    }
+  }
+
+  // 2. Kontrollera felplacerade delar (t.ex. nos i bakdelen)
+  instances.forEach((inst) => {
+    if (inst.partKey === 'nose' && inst.z > -30) {
+      mismatches.push({
+        id: inst.id,
+        designId: inst.designId,
+        assignedPart: 'nose',
+        z: inst.z,
+        expectedPart: inst.z > 140 ? 'rearWing' : 'engineCover / sidepods',
+      });
+    }
+    if (inst.partKey === 'rearWing' && inst.z < 150) {
+      mismatches.push({
+        id: inst.id,
+        designId: inst.designId,
+        assignedPart: 'rearWing',
+        z: inst.z,
+        expectedPart: 'engineCover / cockpit',
+      });
+    }
+  });
+
+  return {
+    duplicatePositions: duplicates,
+    categoryMismatches: mismatches,
+    assemblyIntersections: [],
   };
 }
 
@@ -512,6 +634,31 @@ export function parseLDrawDocument(
 
   const uniqueElements = new Set(instances.map((inst) => inst.designId));
 
+  // Run integrity and collision analysis
+  const integrityReport = checkModelIntegrity(instances);
+  const collisionReport = detectCollisionsAndOverlaps(instances);
+
+  if (collisionReport.duplicatePositions.length > 0) {
+    warnings.push(
+      `Upptäckte ${collisionReport.duplicatePositions.length} potentiella fysiska krockar (delar med identisk position).`
+    );
+  }
+
+  if (collisionReport.categoryMismatches.length > 0) {
+    warnings.push(
+      `Upptäckte ${collisionReport.categoryMismatches.length} delar med rumslig kategoriseringsavvikelse.`
+    );
+  }
+
+  if (!integrityReport.isCoherent) {
+    if (integrityReport.floatingAssemblies.length > 0) {
+      warnings.push(...integrityReport.floatingAssemblies);
+    }
+    if (integrityReport.asymmetryWarnings.length > 0) {
+      warnings.push(...integrityReport.asymmetryWarnings);
+    }
+  }
+
   return {
     instances,
     diagnostics: {
@@ -521,6 +668,8 @@ export function parseLDrawDocument(
       rearWingTilesFixedCount,
       fallbackWheelsMounted,
       warnings,
+      integrityReport,
+      collisionReport,
     },
     uniqueElementCount: uniqueElements.size,
   };

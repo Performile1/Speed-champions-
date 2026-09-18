@@ -39,6 +39,13 @@ export interface CarPartColors {
 
 export type CarPartKey = keyof CarPartColors;
 
+/**
+ * Instance-based color override mapping for individual bricks.
+ * Key: unique instance ID (e.g. 'ldr-77242-15068-1')
+ * Value: hexadecimal color code (e.g. '#FFFF00')
+ */
+export type CustomPieceOverrides = Record<string, string>;
+
 export type DecalPlacementKey = 'sidepod' | 'nose' | 'frontWing' | 'rearWing' | 'sharkFin' | 'halo' | 'rims';
 
 export type LiveryTemplateKey = 'downwash-slash' | 'classic-wedge' | 'flowlines-petronas' | 'heritage-twin' | 'carbon-stealth' | 'custom';

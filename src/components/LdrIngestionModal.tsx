@@ -84,35 +84,69 @@ export const LdrIngestionModal: React.FC<LdrIngestionModalProps> = ({
         </div>
 
         {/* Diagnostic Status Strip */}
-        <div className="my-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+        <div className="my-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Y-Axel Transform</div>
-            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Y = -ldraw_y (Inverterad)
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Y-Axel Transform</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+              Y = -ldraw_y
             </div>
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Skenande Z-Plattor</div>
-            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-              {activeDiagnostics?.outOfBoundsStrippedCount || 0} Strippade (&gt;220 LDU)
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Skenande Z-Plattor</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              <ShieldCheck className="w-3 h-3 text-indigo-600 shrink-0" />
+              {activeDiagnostics?.outOfBoundsStrippedCount || 0} Strippade
             </div>
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Bakvinge Endplates</div>
-            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
-              Tile 2x4 (#87079) Slät
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Z-Sammanhållning</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              {activeDiagnostics?.integrityReport?.isCoherent !== false ? (
+                <>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                  Kontinuerlig
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                  Glapp funnet
+                </>
+              )}
             </div>
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Hjulmontering</div>
-            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Kollisionsanalys</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              {(activeDiagnostics?.collisionReport?.duplicatePositions.length || 0) === 0 ? (
+                <>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                  0 Krockar
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
+                  {activeDiagnostics?.collisionReport?.duplicatePositions.length} Krockar
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Bakvinge Endplates</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              <CheckCircle2 className="w-3 h-3 text-amber-600 shrink-0" />
+              Tile 2x4 (#87079)
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+            <div className="text-[10px] font-semibold text-slate-500 uppercase">Hjulmontering</div>
+            <div className="text-slate-900 font-mono font-bold mt-0.5 flex items-center gap-1 text-[11px]">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
               4 Hjul Garanterade
             </div>
           </div>

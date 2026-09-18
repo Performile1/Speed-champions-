@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LEGO_F1_SETS } from './data/legoSets';
-import { LegoF1Set, CarPartColors, CarDecals, CarPartKey, GranularLegoPart } from './types';
+import { LegoF1Set, CarPartColors, CarDecals, CarPartKey, GranularLegoPart, CustomPieceOverrides } from './types';
+import { LDrawPartInstance } from './data/ldrawModels';
 import { Car3DViewer } from './components/Car3DViewer';
 import { SetSelector } from './components/SetSelector';
 import { ColorCustomizer } from './components/ColorCustomizer';
@@ -43,9 +44,10 @@ export default function App() {
   const [hiddenPartKeys, setHiddenPartKeys] = useState<Set<string>>(new Set());
   const [isolatedPartId, setIsolatedPartId] = useState<string | null>(null);
 
-  // Individual Brick Custom Colors & 3D Selected Instance ID
-  const [customBrickColors, setCustomBrickColors] = useState<Record<string, string>>({});
+  // Individual Brick Custom Colors & 3D Selected Instance
+  const [customBrickColors, setCustomBrickColors] = useState<CustomPieceOverrides>({});
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<LDrawPartInstance | null>(null);
 
   // Custom AI Box title/subtitles
   const [customBoxTitle, setCustomBoxTitle] = useState<string | undefined>();
@@ -72,6 +74,7 @@ export default function App() {
     setGranularParts(getGranularLegoParts(newSet.defaultColors, newSet));
     setCustomBrickColors({});
     setSelectedInstanceId(null);
+    setSelectedInstance(null);
     setHiddenPartKeys(new Set());
     setIsolatedPartId(null);
     setCustomBoxTitle(undefined);
@@ -208,6 +211,37 @@ export default function App() {
         return p;
       })
     );
+  };
+
+  // Reset a single granular brick override back to the assembly/section color
+  const handleResetIndividualBrickColor = (partId: string) => {
+    pushHistorySnapshot();
+    setCustomBrickColors((prev) => {
+      const next = { ...prev };
+      delete next[partId];
+      return next;
+    });
+    setGranularParts((prev) =>
+      prev.map((p) => {
+        if (p.id === partId) {
+          const defaultHex = colors[p.partKey] || '#C91A09';
+          return {
+            ...p,
+            colorHex: defaultHex,
+            colorName: findLegoColorName(defaultHex),
+            brickLinkColorId: getBrickLinkColorId(defaultHex),
+          };
+        }
+        return p;
+      })
+    );
+  };
+
+  // Reset all individual piece overrides at once
+  const handleResetAllBrickOverrides = () => {
+    pushHistorySnapshot();
+    setCustomBrickColors({});
+    setGranularParts(getGranularLegoParts(colors, currentSet));
   };
 
   // Toggle Hide Part (or its assembly)
@@ -565,6 +599,7 @@ export default function App() {
                   isolatedPartId={isolatedPartId}
                   selectedInstanceId={selectedInstanceId}
                   onSelectInstanceId={setSelectedInstanceId}
+                  onSelectInstance={setSelectedInstance}
                   customBrickColors={customBrickColors}
                   onUpdateIndividualBrickColor={handleUpdateGranularPartColor}
                   onAddCustomPart={handleAddCustomPart}
@@ -662,6 +697,13 @@ export default function App() {
                   onUpdateColor={handleUpdateColor}
                   onApplyAllAero={handleApplyAllAero}
                   onResetFactoryColors={handleResetFactory}
+                  selectedInstanceId={selectedInstanceId}
+                  selectedInstance={selectedInstance}
+                  customBrickColors={customBrickColors}
+                  onUpdateIndividualBrickColor={handleUpdateGranularPartColor}
+                  onResetIndividualBrickColor={handleResetIndividualBrickColor}
+                  onResetAllBrickOverrides={handleResetAllBrickOverrides}
+                  onSelectInstanceId={setSelectedInstanceId}
                 />
               ) : customizerSubTab === 'decals' ? (
                 <DecalCustomizer

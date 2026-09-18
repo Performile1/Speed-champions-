@@ -33,6 +33,7 @@ import {
   RotateCcw,
   FileCode,
   Compass,
+  Wrench,
 } from 'lucide-react';
 import {
   generateLDrawMpd,
@@ -45,12 +46,23 @@ import { computeKnollingLayout } from '../utils/knollingLayout';
 import { SNAP_ANCHORS, SnapAnchorZone } from '../data/modularPartOptions';
 import { playLegoSnapSound, playDisassembleSlideSound } from '../utils/legoAudio';
 import { ModularPartSwapModal } from './ModularPartSwapModal';
+import { PartSwapModal } from './PartSwapModal';
+import { ConnectionWarningPanel } from './ConnectionWarningPanel';
+import { PieceActionsToolbar } from './PieceActionsToolbar';
+import { PieceInfoTooltip } from './PieceInfoTooltip';
+import { ModelTroubleshooter } from './ModelTroubleshooter';
+import { rotatePieceMatrix } from '../utils/legoRotation';
+import { usePieceControls } from '../hooks/usePieceControls';
+import { exportInstancesToLdr, saveModelLocally, loadModelLocally } from '../utils/ldrawExporter';
+import { useLegoNudge } from '../hooks/useLegoNudge';
+import { checkPieceConnection, ConnectionCheckResult, ConnectorSuggestion } from '../utils/legoConnectivity';
 import { BricksetInventoryModal } from './BricksetInventoryModal';
 import { LdrIngestionModal } from './LdrIngestionModal';
 import { BlueprintPipelineModal } from './BlueprintPipelineModal';
 import { parseLDrawDocument, LDrawParseDiagnostics } from '../utils/ldrawParser';
 import { OFFICIAL_77242_LDR } from '../data/official77242Ldr';
 import { getVehicleModel, FERRARI_SF24_MODEL } from '../models/registry';
+import { createLDrawDebugBoundsThreeGroup } from './LDrawDebugBounds';
 
 /**
  * Procedural texture for 3-zone disassembled knolling layout table
@@ -253,11 +265,36 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState(false);
   const [selectedStage, setSelectedStage] = useState<number | 'all'>('all');
   const [ldrDiagnostics, setLdrDiagnostics] = useState<LDrawParseDiagnostics | null>(null);
+  const [showDebugZones, setShowDebugZones] = useState(false);
+  const [dismissConnectionWarning, setDismissConnectionWarning] = useState(false);
+  const [isTroubleshooterOpen, setIsTroubleshooterOpen] = useState(false);
+  const [showPieceInfoTooltip, setShowPieceInfoTooltip] = useState(true);
+
+  // Reset dismiss state and show tooltip whenever activeInstance changes
+  useEffect(() => {
+    setDismissConnectionWarning(false);
+    if (activeInstance) {
+      setShowPieceInfoTooltip(true);
+    }
+  }, [activeInstance?.id]);
+
+  const connectionStatus = React.useMemo<ConnectionCheckResult | null>(() => {
+    if (!activeInstance || currentInstances.length === 0) return null;
+    return checkPieceConnection(activeInstance, currentInstances);
+  }, [activeInstance, currentInstances]);
 
   // Animation progress refs for Disassemble/Assemble lerp
   const animProgressRef = useRef(0.0);
   const targetAnimProgressRef = useRef(0.0);
   const handleSnapPointClickRef = useRef<((anchor: SnapAnchorZone) => void) | null>(null);
+  const debugZonesGroupRef = useRef<THREE.Group | null>(null);
+
+  // Sync debug zones visibility
+  useEffect(() => {
+    if (debugZonesGroupRef.current) {
+      debugZonesGroupRef.current.visible = showDebugZones;
+    }
+  }, [showDebugZones]);
 
   // Sync selected piece info when external selectedPart changes
   useEffect(() => {
@@ -265,6 +302,19 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
       setSelectedPieceInfo(LEGO_COMPONENT_METADATA[selectedPart]);
     }
   }, [selectedPart]);
+
+  // Sync activeInstance when external selectedInstanceId changes
+  useEffect(() => {
+    if (selectedInstanceId && currentInstances.length > 0) {
+      const match = currentInstances.find((i) => i.id === selectedInstanceId);
+      if (match) {
+        setActiveInstance(match);
+        if (onSelectInstance) onSelectInstance(match);
+      }
+    } else if (!selectedInstanceId) {
+      setActiveInstance(null);
+    }
+  }, [selectedInstanceId, currentInstances, onSelectInstance]);
 
   // Decal texture helper
   const buildDecalTexture = useCallback(
@@ -921,6 +971,309 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
     }
   };
 
+  // Move a selected LEGO brick on the official LDU grid
+  const handleMovePiece = useCallback((pieceId: string, dx: number, dy: number, dz: number) => {
+    const mesh = meshByIdRef.current.get(pieceId);
+    if (mesh) {
+      // In Three.js coordinate system, LDraw -Y is upward, so Three.js Y is -LDraw Y
+      mesh.position.x += dx;
+      mesh.position.y += -dy;
+      mesh.position.z += dz;
+      if (mesh.userData.assembledPos) {
+        mesh.userData.assembledPos.x += dx;
+        mesh.userData.assembledPos.y += -dy;
+        mesh.userData.assembledPos.z += dz;
+      }
+      mesh.updateMatrixWorld(true);
+    }
+
+    setCurrentInstances((prev) =>
+      prev.map((inst) => {
+        if (inst.id === pieceId) {
+          const updated = {
+            ...inst,
+            x: inst.x + dx,
+            y: inst.y + dy,
+            z: inst.z + dz,
+          };
+          if (mesh) {
+            mesh.userData.instance = updated;
+          }
+          return updated;
+        }
+        return inst;
+      })
+    );
+
+    setActiveInstance((prev) => {
+      if (prev && prev.id === pieceId) {
+        return {
+          ...prev,
+          x: prev.x + dx,
+          y: prev.y + dy,
+          z: prev.z + dz,
+        };
+      }
+      return prev;
+    });
+
+    playLegoSnapSound();
+  }, []);
+
+  // Update piece height directly (new Y coordinate in LDU)
+  const handleUpdatePieceHeight = useCallback(
+    (instanceId: string, newY: number) => {
+      const piece = currentInstances.find((p) => p.id === instanceId);
+      if (!piece) return;
+      const dy = newY - piece.y;
+      handleMovePiece(instanceId, 0, dy, 0);
+    },
+    [currentInstances, handleMovePiece]
+  );
+
+  // Sync selectedPieceId helper for usePieceControls
+  const selectedPieceId = activeInstance?.id || null;
+  const setSelectedPieceId = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        setActiveInstance(null);
+      } else {
+        const found = currentInstances.find((p) => p.id === id) || null;
+        setActiveInstance(found);
+      }
+    },
+    [currentInstances]
+  );
+
+  // Piece Controls Hook (Delete with Del/Backspace, Undo with Ctrl+Z)
+  const { deleteSelectedPiece, undoLastDelete, hasDeletedItems } = usePieceControls({
+    instances: currentInstances,
+    setInstances: setCurrentInstances,
+    selectedPieceId,
+    setSelectedPieceId,
+    enabled:
+      !isDisassembled &&
+      !isSwapModalOpen &&
+      !isBricksetModalOpen &&
+      !isLdrModalOpen &&
+      !isBlueprintModalOpen,
+  });
+
+  // Handle piece deletion and hide Three.js mesh
+  const handleDeletePiece = useCallback(
+    (pieceId: string) => {
+      const mesh = meshByIdRef.current.get(pieceId);
+      if (mesh) {
+        mesh.visible = false;
+      }
+      deleteSelectedPiece(pieceId);
+      playLegoSnapSound();
+      setSnapSuccessToast('Kloss raderad (Tryck Ctrl+Z eller Ångra för att återställa)');
+      setTimeout(() => setSnapSuccessToast(null), 3000);
+    },
+    [deleteSelectedPiece]
+  );
+
+  // Handle undo deletion and restore Three.js meshes
+  const handleUndoDelete = useCallback(() => {
+    undoLastDelete();
+    setTimeout(() => {
+      currentInstances.forEach((inst) => {
+        const mesh = meshByIdRef.current.get(inst.id);
+        if (mesh) {
+          mesh.visible = true;
+        }
+      });
+    }, 50);
+    playLegoSnapSound();
+    setSnapSuccessToast('Kloss återställd!');
+    setTimeout(() => setSnapSuccessToast(null), 2500);
+  }, [undoLastDelete, currentInstances]);
+
+  // Rotate LEGO piece by 90 degrees around X, Y, or Z axis
+  const handleRotatePiece = useCallback(
+    (pieceId: string, axis: 'x' | 'y' | 'z', clockwise = true) => {
+      const mesh = meshByIdRef.current.get(pieceId);
+      let newRotMatrix: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
+      setCurrentInstances((prev) =>
+        prev.map((inst) => {
+          if (inst.id === pieceId) {
+            const updatedRot = rotatePieceMatrix(inst.rot, axis, clockwise);
+            newRotMatrix = updatedRot;
+            const updated = {
+              ...inst,
+              rot: updatedRot,
+            };
+            if (mesh) {
+              mesh.userData.instance = updated;
+            }
+            return updated;
+          }
+          return inst;
+        })
+      );
+
+      setActiveInstance((prev) => {
+        if (prev && prev.id === pieceId) {
+          return {
+            ...prev,
+            rot: newRotMatrix,
+          };
+        }
+        return prev;
+      });
+
+      if (mesh) {
+        const r = newRotMatrix;
+        const m = new THREE.Matrix4();
+        m.set(
+          r[0],  r[1],  r[2],  mesh.position.x,
+          -r[3], -r[4], -r[5], mesh.position.y,
+          r[6],  r[7],  r[8],  mesh.position.z,
+          0,     0,     0,     1
+        );
+        const pos = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const scl = new THREE.Vector3();
+        m.decompose(pos, quat, scl);
+        mesh.quaternion.copy(quat);
+        if (mesh.userData.assembledQuat) {
+          mesh.userData.assembledQuat.copy(quat);
+        }
+        mesh.updateMatrixWorld(true);
+      }
+
+      playLegoSnapSound();
+    },
+    []
+  );
+
+  // Keyboard Nudge Hook for grid snapping (Arrow keys: Studs, Shift/Q/E: Plates, R/Shift+R: Rotate 90°)
+  useLegoNudge({
+    selectedPieceId: activeInstance?.id || null,
+    onMovePiece: handleMovePiece,
+    onRotatePiece: (id, axis, clockwise) => handleRotatePiece(id, axis, clockwise),
+    enabled:
+      !isDisassembled &&
+      !!activeInstance &&
+      !isSwapModalOpen &&
+      !isBricksetModalOpen &&
+      !isLdrModalOpen &&
+      !isBlueprintModalOpen,
+  });
+
+  // Inserts a connecting bridge adapter brick under a floating part
+  const handleAddConnectorPiece = useCallback(
+    (suggestion: ConnectorSuggestion) => {
+      const newId = `connector_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const colorHex = colors[activeInstance?.partKey || 'floor'] || '#1e293b';
+      const newInst: LDrawPartInstance = {
+        id: newId,
+        designId: suggestion.designId,
+        elementId: suggestion.designId,
+        pieceName: suggestion.name,
+        colorCode: getLDrawColorCode(colorHex),
+        colorHex,
+        x: suggestion.suggestedPos.x,
+        y: suggestion.suggestedPos.y,
+        z: suggestion.suggestedPos.z,
+        rot: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        partKey: activeInstance?.partKey || 'floor',
+        subAssembly: 'Chassis Bridge Support',
+        stepNumber: 12,
+      };
+
+      if (carGroupRef.current) {
+        const geo = getLDrawPartGeometry(newInst.designId);
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(colorHex),
+          roughness: 0.18,
+          metalness: 0.0,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.1,
+          reflectivity: 0.8,
+        });
+        const partMesh = new THREE.Mesh(geo, mat);
+        partMesh.castShadow = true;
+        partMesh.receiveShadow = true;
+
+        const edgesGeo = getLDrawPartEdges(newInst.designId);
+        if (edgesGeo) {
+          const edgeLines = new THREE.LineSegments(
+            edgesGeo,
+            new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.4 })
+          );
+          partMesh.add(edgeLines);
+        }
+
+        const m = new THREE.Matrix4();
+        m.set(
+          1,  0,  0,  newInst.x,
+          0, -1,  0, -newInst.y,
+          0,  0,  1,  newInst.z,
+          0,  0,  0,  1
+        );
+        partMesh.position.set(0, 0, 0);
+        partMesh.quaternion.set(0, 0, 0, 1);
+        partMesh.scale.set(1, 1, 1);
+        partMesh.applyMatrix4(m);
+        partMesh.matrixAutoUpdate = true;
+        partMesh.updateMatrixWorld(true);
+
+        partMesh.userData = {
+          isLegoPart: true,
+          id: newInst.id,
+          partKey: newInst.partKey,
+          designId: newInst.designId,
+          elementId: newInst.elementId,
+          pieceName: newInst.pieceName,
+          subAssembly: newInst.subAssembly,
+          colorCode: newInst.colorCode,
+          colorHex: newInst.colorHex,
+          stepNumber: newInst.stepNumber,
+          isTire: false,
+          isRim: false,
+          instance: newInst,
+          assembledPos: partMesh.position.clone(),
+          assembledQuat: partMesh.quaternion.clone(),
+          knollingPos: new THREE.Vector3(
+            -430 + (currentInstances.length % 15) * 26,
+            3,
+            -250 + Math.floor(currentInstances.length / 15) * 28
+          ),
+          knollingQuat: new THREE.Quaternion(0, 0, 0, 1),
+        };
+
+        carGroupRef.current.add(partMesh);
+        meshByIdRef.current.set(newInst.id, partMesh);
+      }
+
+      setCurrentInstances((prev) => [...prev, newInst]);
+      setTotalLDrawPieces((prev) => prev + 1);
+
+      if (onAddCustomPart) {
+        onAddCustomPart({
+          id: newId,
+          elementId: suggestion.designId,
+          designId: suggestion.designId,
+          name: suggestion.name,
+          category: 'Chassis Bridge Support',
+          partKey: activeInstance?.partKey || 'floor',
+          colorHex,
+          colorName: 'Support Brick',
+          quantity: 1,
+          step: 12,
+        });
+      }
+
+      playLegoSnapSound();
+      setSnapSuccessToast(`Kopplade in ${suggestion.name} under klossen!`);
+      setTimeout(() => setSnapSuccessToast(null), 3000);
+    },
+    [activeInstance, colors, currentInstances.length, onAddCustomPart]
+  );
+
   const handleDisassemble = () => {
     setIsDisassembled(true);
     targetAnimProgressRef.current = 1.0;
@@ -1207,6 +1560,12 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
     });
     carGroup.add(snapPointsGroup);
 
+    // LDraw Z-Zone Debug Bounding Boxes
+    const debugZones = createLDrawDebugBoundsThreeGroup();
+    debugZones.visible = showDebugZones;
+    carGroup.add(debugZones);
+    debugZonesGroupRef.current = debugZones;
+
     // 3. Normalize Scales & Global Dimensions
     carGroup.scale.setScalar(0.04);
     carGroup.updateMatrixWorld(true);
@@ -1438,13 +1797,15 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
     });
   }, [selectedStage, currentInstances]);
 
-  // Real-time Material Color Updates (Per-brick overrides + global category colors)
+  // Real-time Material Color Updates (Per-brick overrides + global category colors + LDraw fallback)
   useEffect(() => {
     meshByIdRef.current.forEach((mesh, id) => {
       if (mesh.userData.isTire) return;
       const partKey = mesh.userData.partKey as CarPartKey;
       const customHex = customBrickColors?.[id];
-      const targetHex = customHex || (mesh.userData.isRim ? (colors.rims || '#646464') : colors[partKey]);
+      const targetHex = customHex || (mesh.userData.isRim ? (colors.rims || '#646464') : (colors[partKey] || mesh.userData.colorHex || '#C91A09'));
+
+      mesh.userData.customColor = customHex || undefined;
 
       if (targetHex && mesh.material) {
         makeMaterialUnique(mesh);
@@ -1965,6 +2326,34 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
           </button>
 
+          <button
+            onClick={() => setShowDebugZones((v) => !v)}
+            className={`p-2 rounded-xl transition-colors cursor-pointer relative ${
+              showDebugZones
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-emerald-600'
+            }`}
+            title={
+              showDebugZones
+                ? 'Dölj LDraw Z-Zoner (Bounding Boxes)'
+                : 'Visa LDraw Z-Zoner (Bounding Boxes för nos, cockpit, sidopoddar, bakvinge m.m.)'
+            }
+          >
+            <Boxes className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => setIsTroubleshooterOpen((v) => !v)}
+            className={`p-2 rounded-xl transition-colors cursor-pointer relative ${
+              isTroubleshooterOpen
+                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-amber-600'
+            }`}
+            title="Modellfelsökare & Strukturverifiering (Kollisioner, Svävande klossar & .LDR Export)"
+          >
+            <Wrench className="w-4 h-4" />
+          </button>
+
           {/* History Engine Toolbar: Undo, Redo, Reset */}
           {(onUndo || onRedo || onResetHistory) && (
             <>
@@ -2197,6 +2586,34 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
                 {activeInstance?.pieceName || selectedPieceInfo.name}
               </span>
             </div>
+
+            {/* Position and Physical Connection Status */}
+            {activeInstance && (
+              <>
+                <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 pt-0.5 border-t border-slate-200/60">
+                  <span className="text-slate-400 font-sans uppercase font-bold">Position:</span>
+                  <span>
+                    X:{activeInstance.x.toFixed(0)} Y:{activeInstance.y.toFixed(0)} Z:{activeInstance.z.toFixed(0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-400 uppercase font-bold">Status:</span>
+                  {connectionStatus?.isConnected ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <Check className="w-3 h-3" /> Förankrad
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md border border-red-200 animate-pulse">
+                      <AlertTriangle className="w-3 h-3" /> Svävande ({connectionStatus?.gapY.toFixed(0) || 0} LDU)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-[9px] text-slate-400 pt-0.5 border-t border-slate-200/60 font-sans">
+                  <span>Nudge:</span>
+                  <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">Pilar / Shift+Pil / Q & E</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Part Swap Action Button */}
@@ -2205,7 +2622,7 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
             className="w-full py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />
-            <span>Part Swap</span>
+            <span>Part Swap Mode</span>
           </button>
 
           {/* Color Swatches */}
@@ -2243,13 +2660,29 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
 
       {/* Part Swap Modal */}
       {isSwapModalOpen && activeInstance && (
-        <ModularPartSwapModal
+        <PartSwapModal
           isOpen={isSwapModalOpen}
           onClose={() => setIsSwapModalOpen(false)}
-          instance={activeInstance}
-          onSelectPartSwap={handleExecutePartSwap}
-          currentColorHex={customBrickColors?.[activeInstance.id] || activeInstance.colorHex}
-          onUpdateColor={(hex) => handlePaintIndividualBrick(activeInstance.id, hex)}
+          selectedPart={activeInstance}
+          onSelectSwap={(instanceId, newDesignId, newName) => {
+            handleExecutePartSwap(
+              instanceId,
+              newDesignId,
+              newDesignId,
+              newName,
+              activeInstance.subAssembly || 'Body'
+            );
+          }}
+        />
+      )}
+
+      {/* Floating LEGO Piece Warning & Connector Bridge Panel */}
+      {activeInstance && connectionStatus && !connectionStatus.isConnected && !dismissConnectionWarning && (
+        <ConnectionWarningPanel
+          selectedPiece={activeInstance}
+          connectionStatus={connectionStatus}
+          onAddConnectorPiece={handleAddConnectorPiece}
+          onClose={() => setDismissConnectionWarning(true)}
         />
       )}
 
@@ -2292,6 +2725,63 @@ export const Car3DViewer: React.FC<Car3DViewerProps> = ({
             setResetKey((k) => k + 1);
           }}
         />
+      )}
+
+      {/* Floating Piece Actions Toolbar: Rotate, Swap, Delete, Undo */}
+      {(activeInstance || hasDeletedItems) && (
+        <PieceActionsToolbar
+          selectedPiece={activeInstance}
+          onDelete={handleDeletePiece}
+          onUndo={handleUndoDelete}
+          canUndo={hasDeletedItems}
+          onOpenSwapModal={() => setIsSwapModalOpen(true)}
+          onRotate={(axis, clockwise) => {
+            if (activeInstance) {
+              handleRotatePiece(activeInstance.id, axis, clockwise);
+            }
+          }}
+          onHeightStep={(lduDelta) => {
+            if (activeInstance) {
+              handleMovePiece(activeInstance.id, 0, lduDelta, 0);
+            }
+          }}
+          onDeselect={() => setActiveInstance(null)}
+        />
+      )}
+
+      {/* Floating Piece Info Tooltip with BrickLink, Rebrickable Links & Height Control */}
+      {activeInstance && showPieceInfoTooltip && (
+        <PieceInfoTooltip
+          selectedPiece={activeInstance}
+          onUpdateHeight={handleUpdatePieceHeight}
+          onClose={() => setShowPieceInfoTooltip(false)}
+        />
+      )}
+
+      {/* Real-time Model Troubleshooter Panel */}
+      {isTroubleshooterOpen && (
+        <div className="fixed bottom-6 right-6 z-40 max-w-sm">
+          <ModelTroubleshooter
+            modelId={currentSet.articleNumber}
+            modelName={currentSet.name}
+            instances={currentInstances}
+            onSelectPiece={(id) => {
+              const piece = currentInstances.find((p) => p.id === id);
+              if (piece) {
+                setActiveInstance(piece);
+                if (onSelectPart) {
+                  onSelectPart(piece.partKey);
+                }
+              }
+            }}
+            onDeletePiece={handleDeletePiece}
+            onModelSaved={() => {
+              setSnapSuccessToast(`Modell ${currentSet.articleNumber} sparades lokalt som verifierad!`);
+              setTimeout(() => setSnapSuccessToast(null), 3500);
+            }}
+            onClose={() => setIsTroubleshooterOpen(false)}
+          />
+        </div>
       )}
     </div>
   );

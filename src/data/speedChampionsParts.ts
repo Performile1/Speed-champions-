@@ -21,6 +21,7 @@ export interface LegoMinifigItem {
 
 export interface SetInventoryData {
   setId: string;
+  setNum?: string;
   totalPieces: number;
   minifigCount: number;
   minifigs: LegoMinifigItem[];
